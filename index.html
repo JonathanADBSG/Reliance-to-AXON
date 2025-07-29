@@ -241,14 +241,15 @@
             notesContainer.classList.add('hidden');
             notesList.innerHTML = '';
 
-            // Input Validation
+            // Input Validation (Updated to accept ERES)
             if (!erelInput.startsWith('ERE') || erelInput.length !== 15) {
-                errorOutputElement.textContent = 'Invalid EREL Part Number format. It must start with "ERE" and be 15 characters long (e.g., EREL2WY31S00002).';
+                errorOutputElement.textContent = 'Invalid EREL/ERES Part Number format. It must start with "ERE" or "ERES" and be 15 characters long (e.g., EREL2WY31S00002 or ERES2WY31S00002).';
                 errorOutputElement.classList.remove('hidden');
                 return;
             }
 
             const erel_segments = {
+                "prefix_char_4": erelInput[3], // The 4th character (E or S)
                 "cable_connectors": erelInput[4],
                 "color_right": erelInput[5],
                 "color_left": erelInput[6],
@@ -268,7 +269,7 @@
                 "application_part2": "E",
                 "standards": "1",
                 "market_specific": "0",
-                "lens_type": "P",
+                "lens_type": "P", // Default
                 "omni_directional": "1",
                 "advanced_connectivity": "0",
                 "refurbished": "0",
@@ -286,7 +287,14 @@
 
             const notes = [];
 
-            // AXON 7th digit (Toe-in)
+            // Change 1: AXON 6th digit (Lens Type) based on EREL 4th digit
+            if (erel_segments["prefix_char_4"] === "S") {
+                axon_components["lens_type"] = "G";
+            } else {
+                axon_components["lens_type"] = "P";
+            }
+
+            // Change 2: AXON 7th digit (Toe-in) for Module 1
             const erelToeInVal = parseInt(erel_segments["toe_in"]);
             if (erelToeInVal === 1) {
                 axon_components["toe_in_axon"] = "L";
@@ -295,26 +303,26 @@
             } else if (erelToeInVal === 3) {
                 axon_components["toe_in_axon"] = "C";
             } else if (erelToeInVal === 0) {
-                notes.push(`EREL Toe-in '0' (No toe-in) is not explicitly handled by the provided formula. AXON 'Toe-in Coding' is left blank.`);
-                axon_components["toe_in_axon"] = "";
+                notes.push(`EREL Toe-in '0' (No toe-in) is not explicitly mapped for AXON. Using 'X'.`);
+                axon_components["toe_in_axon"] = "X"; // Changed from blank to X
             } else {
                 notes.push(`Invalid EREL Toe-in code: '${erel_segments["toe_in"]}'. Cannot map to AXON. Using 'X'.`);
                 axon_components["toe_in_axon"] = "X";
             }
 
-            // AXON 8th digit (Color - Side 1 (Left))
+            // AXON 8th digit (Color - Side 1 (Left)) - Change 3: G becomes F
             axon_components["color_side1"] = erel_segments["color_right"];
             if (erel_segments["color_right"] === "G") {
-                notes.push(`EREL Right Color 'G' (Green) is passed directly to AXON Side 1. AXON datasheet typically uses 'F' for F-Green. Verify if this direct mapping is desired.`);
+                axon_components["color_side1"] = "F"; // G becomes F
             } else if (!["W", "R", "Y", "N"].includes(erel_segments["color_right"])) {
                 notes.push(`Invalid EREL Right Color code: '${erel_segments["color_right"]}'. Defaulting AXON Side 1 Color to None (N).`);
                 axon_components["color_side1"] = "N";
             }
 
-            // AXON 9th digit (Color - Side 2 (Right))
+            // AXON 9th digit (Color - Side 2 (Right)) - Change 3: G becomes F
             axon_components["color_side2"] = erel_segments["color_left"];
             if (erel_segments["color_left"] === "G") {
-                notes.push(`EREL Left Color 'G' (Green) is passed directly to AXON Side 2. AXON datasheet typically uses 'F' for F-Green. Verify if this direct mapping is desired.`);
+                axon_components["color_side2"] = "F"; // G becomes F
             } else if (!["W", "R", "Y", "N"].includes(erel_segments["color_left"])) {
                 notes.push(`Invalid EREL Left Color code: '${erel_segments["color_left"]}'. Defaulting AXON Side 2 Color to None (N).`);
                 axon_components["color_side2"] = "N";
@@ -342,31 +350,30 @@
                 axon_components["cable_connector_axon"] = "X";
             }
 
-            // AXON 13th digit (Coupling) and 14th digit (Fixture Height)
-            const height_coupling_map = {
-                "1": {"height": "C", "coupling": "D"},
-                "2": {"height": "D", "coupling": "D"},
-                "3": {"height": "E", "coupling": "D"},
-                "5": {"height": "C", "coupling": "C"},
-                "6": {"height": "D", "coupling": "C"},
-                "7": {"height": "E", "coupling": "C"},
-                "9": {"height": "C", "coupling": "B"}
-            };
-            const mapped_hc = height_coupling_map[erel_segments["height_coupling"]];
-            if (mapped_hc) {
-                axon_components["fixture_height"] = mapped_hc["height"];
-                axon_components["coupling"] = mapped_hc["coupling"];
+            // Change 4: AXON 13th digit (Fixture Height) based on EREL Digit 9
+            const erelHeightCouplingDigit = parseInt(erel_segments["height_coupling"]);
+            if ([1, 5, 9].includes(erelHeightCouplingDigit)) {
+                axon_components["fixture_height"] = "C";
+            } else if ([2, 6].includes(erelHeightCouplingDigit)) {
+                axon_components["fixture_height"] = "D";
+            } else if ([3, 7].includes(erelHeightCouplingDigit)) {
+                axon_components["fixture_height"] = "E";
             } else {
-                notes.push(`Invalid EREL Height/Coupling code: '${erel_segments["height_coupling"]}'. Cannot map to AXON Height and Coupling. Using 'X'.`);
+                notes.push(`Invalid EREL Height/Coupling code: '${erel_segments["height_coupling"]}'. Cannot map to AXON Fixture Height. Using 'X'.`);
                 axon_components["fixture_height"] = "X";
-                axon_components["coupling"] = "X";
             }
-            const erelHeightCouplingVal = parseInt(erel_segments["height_coupling"]);
-            if (![1, 5, 9].includes(erelHeightCouplingVal) && mapped_hc) {
-                notes.push(`EREL Height/Coupling code '${erel_segments["height_coupling"]}' is not explicitly covered by the provided formula's IF statement for AXON Fixture Height. Using mapped value from datasheet.`);
-            } else if (!mapped_hc) {
-                 notes.push(`EREL Height/Coupling code '${erel_segments["height_coupling"]}' is invalid. Cannot map to AXON Fixture Height. Using 'X'.`);
+
+            // AXON 14th digit (Coupling) - still uses the original map for coupling
+            const height_coupling_map_coupling = {
+                "1": "D", "2": "D", "3": "D",
+                "5": "C", "6": "C", "7": "C",
+                "9": "B"
+            };
+            axon_components["coupling"] = height_coupling_map_coupling[erelHeightCouplingDigit] || "X";
+            if (axon_components["coupling"] === "X") {
+                 notes.push(`Invalid EREL Height/Coupling code: '${erel_segments["height_coupling"]}'. Cannot map to AXON Coupling. Using 'X'.`);
             }
+
 
             // AXON 15th digit (Option 2)
             if (erel_segments["arctic_kit"] === "1") {
@@ -394,8 +401,8 @@
                 axon_components["omni_directional"] +
                 axon_components["power_supply_axon"] +
                 axon_components["cable_connector_axon"] +
-                axon_components["fixture_height"] + // Fixture Height (Q103)
-                axon_components["coupling"] +       // Coupling (P103)
+                axon_components["fixture_height"] +   // AXON Digit 13
+                axon_components["coupling"] +       // AXON Digit 14
                 axon_components["option2"] +
                 axon_components["advanced_connectivity"] +
                 axon_components["refurbished"] +
@@ -429,19 +436,20 @@
             notesContainer.classList.add('hidden');
             notesList.innerHTML = '';
 
-            // Input Validation
+            // Input Validation (Updated to accept ERES)
             if (!erelInput.startsWith('ERE') || erelInput.length !== 15) {
-                errorOutputElement.textContent = 'Invalid EREL Part Number format. It must start with "ERE" and be 15 characters long (e.g., EREL6RN09M00112).';
+                errorOutputElement.textContent = 'Invalid EREL/ERES Part Number format. It must start with "ERE" or "ERES" and be 15 characters long (e.g., EREL6RN09M00112).';
                 errorOutputElement.classList.remove('hidden');
                 return;
             }
 
             // Extract EREL segments based on NEW deconstruction for Threshold module
             const erel_segments_threshold = {
+                "prefix_char_4": erelInput[3], // The 4th character (E or S)
                 "cable_connectors": erelInput[4],
-                "colors_combined": erelInput.substring(5, 7), // F71 (6th and 7th combined)
+                "colors_combined_raw": erelInput.substring(5, 7), // Raw 6th and 7th combined
                 "toe_in": erelInput[7],           // G71
-                "height_coupling": erelInput[8],  // H71
+                "height_coupling": erelInput[8],  // H71 (EREL Digit 9)
                 "power_supply": erelInput[9],     // I71
                 "standard": erelInput[10],        // J71
                 "options": erelInput[11],         // K71
@@ -456,7 +464,7 @@
                 "application_axon": "", // Digits 2 & 3 (RT, RN, RW - derived from F71)
                 "standards": "3", // Digit 4 (Fixed to 3)
                 "market_specific": "0", // Digit 5 (Fixed to 0)
-                "lens_type": "P", // Digit 6 (Fixed to P)
+                "lens_type": "P", // Default
                 "omni_directional": "0", // Digit 10 (Fixed to 0)
                 "advanced_connectivity": "0", // Digit 16 (Fixed to 0)
                 "refurbished": "0", // Digit 17 (Fixed to 0)
@@ -468,31 +476,47 @@
                 "color_side2": "", // Digit 9 (derived from F71)
                 "power_supply_axon": "", // Digit 11
                 "cable_connector_axon": "", // Digit 12
-                "coupling": "", // Digit 13
-                "fixture_height": "", // Digit 14
+                "coupling": "", // Digit 14
+                "fixture_height": "", // Digit 13
                 "option2": "", // Digit 15
             };
 
             const notes = [];
 
-            // --- Conversion Logic for EREL RUNWAY THRESHOLD, END ICAO ---
+            // Change 1: AXON 6th digit (Lens Type) based on EREL 4th digit
+            if (erel_segments_threshold["prefix_char_4"] === "S") {
+                axon_components_threshold["lens_type"] = "G";
+            } else {
+                axon_components_threshold["lens_type"] = "P";
+            }
+
+            // Change for G to F conversion *before* combined color validation
+            let color1_processed = erel_segments_threshold["colors_combined_raw"][0];
+            let color2_processed = erel_segments_threshold["colors_combined_raw"][1];
+
+            if (color1_processed === "G") {
+                color1_processed = "F";
+            }
+            if (color2_processed === "G") {
+                color2_processed = "F";
+            }
+
+            const colors_combined_processed = color1_processed + color2_processed;
+            erel_segments_threshold["colors_combined"] = colors_combined_processed; // Update segment for consistency
 
             // AXON Application (Digits 2 & 3) - derived from F71 (colors_combined)
-            // Formula: if(F71="RN",$E$113,$E$112)
-            // $E$112 is "RT", $E$113 is "RN"
-            const validCombinedColors = ["RN", "FN", "FR", "RF"];
+            // Added "RR" and "NR" as valid combined colors
+            const validCombinedColors = ["RN", "FN", "FR", "RF", "RR", "NR"];
             if (erel_segments_threshold["colors_combined"] === "RN") {
                 axon_components_threshold["application_axon"] = "RN";
             } else if (validCombinedColors.includes(erel_segments_threshold["colors_combined"])) {
                 axon_components_threshold["application_axon"] = "RT";
             } else {
-                notes.push(`Invalid EREL combined colors: '${erel_segments_threshold["colors_combined"]}'. Cannot map to AXON Application. Using 'XX'.`);
+                notes.push(`Invalid EREL combined colors: '${erel_segments_threshold["colors_combined_raw"]}'. After G-to-F conversion, '${erel_segments_threshold["colors_combined"]}' is not a valid AXON Application. Using 'XX'.`);
                 axon_components_threshold["application_axon"] = "XX";
             }
 
             // AXON Toe-in (Digit 7) - from G71
-            // Formula: if(value(G71)=0,$I$112,if(value(G71)=1,$I$113,if(value(G71)=2,$I$114)))
-            // $I$112 is N, $I$113 is L, $I$114 is R
             const erelToeInVal = parseInt(erel_segments_threshold["toe_in"]);
             if (erelToeInVal === 0) {
                 axon_components_threshold["toe_in_axon"] = "N";
@@ -508,16 +532,10 @@
                 axon_components_threshold["toe_in_axon"] = "X";
             }
 
-            // AXON Colors (Digits 8 & 9) - from F71 (combined)
-            // Split F71 into two characters for AXON Digit 8 and 9
-            if (erel_segments_threshold["colors_combined"].length === 2 && validCombinedColors.includes(erel_segments_threshold["colors_combined"])) {
-                axon_components_threshold["color_side1"] = erel_segments_threshold["colors_combined"][0]; // First char of combined
-                axon_components_threshold["color_side2"] = erel_segments_threshold["colors_combined"][1]; // Second char of combined
-            } else {
-                notes.push(`Invalid or unexpected EREL combined colors: '${erel_segments_threshold["colors_combined"]}'. Expected a 2-character valid combined color (RN, FN, FR, RF). Cannot map to AXON colors. Using 'XX'.`);
-                axon_components_threshold["color_side1"] = "X";
-                axon_components_threshold["color_side2"] = "X";
-            }
+            // AXON Colors (Digits 8 & 9) - now use the processed colors
+            axon_components_threshold["color_side1"] = color1_processed;
+            axon_components_threshold["color_side2"] = color2_processed;
+
 
             // AXON Power Supply (Digit 11) - from I71
             if (erel_segments_threshold["power_supply"] === "S" || erel_segments_threshold["power_supply"] === "M") {
@@ -538,21 +556,31 @@
                 axon_components_threshold["cable_connector_axon"] = "X";
             }
 
-            // AXON Fixture Height (Digit 13) and Coupling (Digit 14)
-            const threshold_height_coupling_map = {
-                "9": {"height": "C", "coupling": "B"}, // EREL '9' -> AXON 'CB'
-                "5": {"height": "C", "coupling": "C"}  // EREL '5' -> AXON 'CC'
-            };
-            const mapped_hc_threshold = threshold_height_coupling_map[erel_segments_threshold["height_coupling"]];
-
-            if (mapped_hc_threshold) {
-                axon_components_threshold["fixture_height"] = mapped_hc_threshold["height"];
-                axon_components_threshold["coupling"] = mapped_hc_threshold["coupling"];
+            // Change 7: AXON Digit 13 (Fixture Height) for Module 2
+            const erelHeightCouplingDigitThreshold = parseInt(erel_segments_threshold["height_coupling"]);
+            if ([9, 5].includes(erelHeightCouplingDigitThreshold)) {
+                axon_components_threshold["fixture_height"] = "C";
+            } else if (erelHeightCouplingDigitThreshold === 6) {
+                axon_components_threshold["fixture_height"] = "D";
+            } else if (erelHeightCouplingDigitThreshold === 7) {
+                axon_components_threshold["fixture_height"] = "E";
             } else {
-                notes.push(`Invalid EREL Height/Coupling code: '${erel_segments_threshold["height_coupling"]}'. Expected '5' or '9'. Cannot map to AXON Height and Coupling. Using 'X'.`);
+                notes.push(`Invalid EREL Height/Coupling code: '${erel_segments_threshold["height_coupling"]}'. Cannot map to AXON Fixture Height. Using 'X'.`);
                 axon_components_threshold["fixture_height"] = "X";
+            }
+
+            // Change 5: AXON Digit 14 (Coupling) for Module 2
+            if ([1, 2, 3].includes(erelHeightCouplingDigitThreshold)) {
+                axon_components_threshold["coupling"] = "D";
+            } else if ([5, 6, 7].includes(erelHeightCouplingDigitThreshold)) {
+                axon_components_threshold["coupling"] = "C";
+            } else if (erelHeightCouplingDigitThreshold === 9) {
+                axon_components_threshold["coupling"] = "B";
+            } else {
+                notes.push(`Invalid EREL Height/Coupling code: '${erel_segments_threshold["height_coupling"]}'. Cannot map to AXON Coupling. Using 'X'.`);
                 axon_components_threshold["coupling"] = "X";
             }
+
 
             // AXON Option 2 (Digit 15) - from L71 (Arctic Kit)
             if (erel_segments_threshold["arctic_kit"] === "1") {
@@ -614,19 +642,20 @@
             notesContainer.classList.add('hidden');
             notesList.innerHTML = '';
 
-            // Input Validation
+            // Input Validation (Updated to accept ERES)
             if (!erelInput.startsWith('ERE') || erelInput.length !== 15) {
-                errorOutputElement.textContent = 'Invalid EREL Part Number format. It must start with "ERE" and be 15 characters long.';
+                errorOutputElement.textContent = 'Invalid EREL/ERES Part Number format. It must start with "ERE" or "ERES" and be 15 characters long.';
                 errorOutputElement.classList.remove('hidden');
                 return;
             }
 
             // Extract EREL segments (same deconstruction as ICAO Threshold module)
             const erel_segments_faa = {
+                "prefix_char_4": erelInput[3], // The 4th character (E or S)
                 "cable_connectors": erelInput[4],
-                "colors_combined": erelInput.substring(5, 7), // 6th and 7th combined
+                "colors_combined_raw": erelInput.substring(5, 7), // Raw 6th and 7th combined
                 "toe_in": erelInput[7],           // 8th digit
-                "height_coupling": erelInput[8],  // 9th digit
+                "height_coupling": erelInput[8],  // 9th digit (EREL Digit 9)
                 "power_supply": erelInput[9],     // 10th digit
                 "standard": erelInput[10],        // 11th digit
                 "options": erelInput[11],         // 12th digit
@@ -641,7 +670,7 @@
                 "application_axon": "", // Digits 2 & 3 (derived)
                 "standards": "2", // Digit 4 (Fixed to 2, specific for FAA)
                 "market_specific": "0", // Digit 5 (Fixed to 0)
-                "lens_type": "P", // Digit 6 (Fixed to P)
+                "lens_type": "P", // Default
                 "omni_directional": "0", // Digit 10 (Fixed to 0)
                 "advanced_connectivity": "0", // Digit 16 (Fixed to 0)
                 "refurbished": "0", // Digit 17 (Fixed to 0)
@@ -653,29 +682,47 @@
                 "color_side2": "", // Digit 9
                 "power_supply_axon": "", // Digit 11
                 "cable_connector_axon": "1", // Digit 12 (Fixed to 1, as EREL E5 can only be 2)
-                "fixture_height": "C", // Digit 13 (Fixed to C)
+                "fixture_height": "", // Digit 13 (derived)
                 "coupling": "", // Digit 14 (derived)
                 "option2": "", // Digit 15
             };
 
             const notes = [];
 
-            // --- Conversion Logic for EREL RUNWAY THRESHOLD, END FAA ---
+            // Change 1: AXON 6th digit (Lens Type) based on EREL 4th digit
+            if (erel_segments_faa["prefix_char_4"] === "S") {
+                axon_components_faa["lens_type"] = "G";
+            } else {
+                axon_components_faa["lens_type"] = "P";
+            }
+
+            // Change for G to F conversion *before* combined color validation
+            let color1_processed = erel_segments_faa["colors_combined_raw"][0];
+            let color2_processed = erel_segments_faa["colors_combined_raw"][1];
+
+            if (color1_processed === "G") {
+                color1_processed = "F";
+            }
+            if (color2_processed === "G") {
+                color2_processed = "F";
+            }
+
+            const colors_combined_processed = color1_processed + color2_processed;
+            erel_segments_faa["colors_combined"] = colors_combined_processed; // Update segment for consistency
 
             // AXON Application (Digits 2 & 3) - derived from F71 (colors_combined)
-            // Same logic as ICAO module
-            const validCombinedColors = ["RN", "FN", "FR", "RF"];
+            // Added "RR" and "NR" as valid combined colors
+            const validCombinedColors = ["RN", "FN", "FR", "RF", "RR", "NR"];
             if (erel_segments_faa["colors_combined"] === "RN") {
                 axon_components_faa["application_axon"] = "RN";
             } else if (validCombinedColors.includes(erel_segments_faa["colors_combined"])) {
                 axon_components_faa["application_axon"] = "RT";
             } else {
-                notes.push(`Invalid EREL combined colors: '${erel_segments_faa["colors_combined"]}'. Cannot map to AXON Application. Using 'XX'.`);
+                notes.push(`Invalid EREL combined colors: '${erel_segments_faa["colors_combined_raw"]}'. After G-to-F conversion, '${erel_segments_faa["colors_combined"]}' is not a valid AXON Application. Using 'XX'.`);
                 axon_components_faa["application_axon"] = "XX";
             }
 
             // AXON Toe-in (Digit 7) - from G71
-            // Same logic as ICAO module
             const erelToeInVal = parseInt(erel_segments_faa["toe_in"]);
             if (erelToeInVal === 0) {
                 axon_components_faa["toe_in_axon"] = "N";
@@ -691,19 +738,12 @@
                 axon_components_faa["toe_in_axon"] = "X";
             }
 
-            // AXON Colors (Digits 8 & 9) - from F71 (combined)
-            // Same logic as ICAO module (split F71 into two chars)
-            if (erel_segments_faa["colors_combined"].length === 2 && validCombinedColors.includes(erel_segments_faa["colors_combined"])) {
-                axon_components_faa["color_side1"] = erel_segments_faa["colors_combined"][0];
-                axon_components_faa["color_side2"] = erel_segments_faa["colors_combined"][1];
-            } else {
-                notes.push(`Invalid or unexpected EREL combined colors: '${erel_segments_faa["colors_combined"]}'. Expected a 2-character valid combined color (RN, FN, FR, RF). Cannot map to AXON colors. Using 'XX'.`);
-                axon_components_faa["color_side1"] = "X";
-                axon_components_faa["color_side2"] = "X";
-            }
+            // AXON Colors (Digits 8 & 9) - now use the processed colors
+            axon_components_faa["color_side1"] = color1_processed;
+            axon_components_faa["color_side2"] = color2_processed;
+
 
             // AXON Power Supply (Digit 11) - from I71
-            // Same logic as ICAO module
             if (erel_segments_faa["power_supply"] === "S" || erel_segments_faa["power_supply"] === "M") {
                 axon_components_faa["power_supply_axon"] = erel_segments_faa["power_supply"];
             } else {
@@ -712,26 +752,35 @@
             }
 
             // AXON Cable & Connector (Digit 12) - FIXED to '1'
-            // This is fixed to '1' because EREL E5 (cable_connectors) can only be '2' for this module.
-            // No need for conditional logic here.
             if (erel_segments_faa["cable_connectors"] !== "2") {
                 notes.push(`EREL Cable & Connectors code '${erel_segments_faa["cable_connectors"]}' is not '2' as expected for this FAA module. AXON Cable & Connector fixed to '1'. Verify input.`);
             }
 
-            // AXON Fixture Height (Digit 13) - FIXED to 'C'
-            // AXON Coupling (Digit 14) - derived from EREL H71 (height_coupling)
-            const erelHeightCouplingVal = parseInt(erel_segments_faa["height_coupling"]);
-            if (erelHeightCouplingVal === 1) { // If EREL Digit 9 is 1, AXON Digit 14 (Coupling) is D
-                axon_components_faa["coupling"] = "D";
-            } else if (erelHeightCouplingVal === 5) { // If EREL Digit 9 is 5, AXON Digit 14 (Coupling) is C
-                axon_components_faa["coupling"] = "C";
+            // Change 8: AXON Digit 13 (Fixture Height) for Module 3
+            const erelHeightCouplingDigitFaa = parseInt(erel_segments_faa["height_coupling"]);
+            if ([1, 5].includes(erelHeightCouplingDigitFaa)) {
+                axon_components_faa["fixture_height"] = "C";
+            } else if ([2, 6].includes(erelHeightCouplingDigitFaa)) {
+                axon_components_faa["fixture_height"] = "D";
+            } else if ([3, 7].includes(erelHeightCouplingDigitFaa)) {
+                axon_components_faa["fixture_height"] = "E";
             } else {
-                notes.push(`Invalid EREL Height/Coupling code: '${erel_segments_faa["height_coupling"]}'. Expected '1' or '5'. Cannot map to AXON Coupling. Using 'X'.`);
+                notes.push(`Invalid EREL Height/Coupling code: '${erel_segments_faa["height_coupling"]}'. Cannot map to AXON Fixture Height. Using 'X'.`);
+                axon_components_faa["fixture_height"] = "X";
+            }
+
+            // Change 9: AXON Digit 14 (Coupling) for Module 3
+            if ([5, 6, 7].includes(erelHeightCouplingDigitFaa)) {
+                axon_components_faa["coupling"] = "C";
+            } else if ([1, 2, 3].includes(erelHeightCouplingDigitFaa)) {
+                axon_components_faa["coupling"] = "D";
+            } else {
+                notes.push(`Invalid EREL Height/Coupling code: '${erel_segments_faa["height_coupling"]}'. Cannot map to AXON Coupling. Using 'X'.`);
                 axon_components_faa["coupling"] = "X";
             }
 
+
             // AXON Option 2 (Digit 15) - from L71 (Arctic Kit)
-            // Same logic as ICAO module
             if (erel_segments_faa["arctic_kit"] === "1") {
                 axon_components_faa["option2"] = "1";
             } else if (erel_segments_faa["arctic_kit"] === "0") {
@@ -756,8 +805,8 @@
                 axon_components_faa["omni_directional"] +
                 axon_components_faa["power_supply_axon"] +
                 axon_components_faa["cable_connector_axon"] + // Fixed to '1'
-                axon_components_faa["fixture_height"] +   // Fixed to 'C'
-                axon_components_faa["coupling"] +         // Derived from EREL H71
+                axon_components_faa["fixture_height"] +   // Derived
+                axon_components_faa["coupling"] +         // Derived
                 axon_components_faa["option2"] +
                 axon_components_faa["advanced_connectivity"] +
                 axon_components_faa["refurbished"] +
